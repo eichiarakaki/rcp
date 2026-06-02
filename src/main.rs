@@ -7,23 +7,18 @@ use std::io::Write;
 use clap::Parser;
 use walkdir::WalkDir;
 
-/// rcopy - Recursively collect file contents and copy them merged to the clipboard
 #[derive(Parser, Debug)]
-#[command(name = "rcopy", version, about = "Copy files and directories recursively to clipboard (merged with path headers)", long_about = None)]
+#[command(name = "rcopy", version, about = "Copy files and directories recursively to clipboard (merged with path headers)")]
 struct Args {
-    /// Optional flag to enable copy mode (for compatibility with example usage)
     #[arg(long, default_value_t = false)]
     copy: bool,
 
-    /// One or more paths (files or directories). Directories are walked recursively.
     #[arg(required = true, num_args = 1..)]
     paths: Vec<PathBuf>,
 
-    /// File extensions to exclude (e.g. .go .h .rs)
     #[arg(long, num_args = 0..)]
     exclude_file_types: Vec<String>,
 
-    /// Specific paths (files or directories) to exclude
     #[arg(long, num_args = 0..)]
     exclude: Vec<PathBuf>,
 }
@@ -38,21 +33,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let cwd = env::current_dir()?;
 
-    // Normalize excluded extensions (always start with dot, lowercase)
     let exclude_exts: HashSet<String> = args
         .exclude_file_types
         .iter()
         .map(|s| {
-            let trimmed = s.trim();
-            if trimmed.starts_with('.') {
-                trimmed.to_lowercase()
-            } else {
-                format!(".{}", trimmed.to_lowercase())
-            }
+            let t = s.trim();
+            if t.starts_with('.') { t.to_lowercase() } else { format!(".{}", t.to_lowercase()) }
         })
         .collect();
 
-    // Build set of excluded paths using absolute/canonical form when possible
     let exclude_set: HashSet<PathBuf> = args
         .exclude
         .iter()
@@ -87,8 +76,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .into_iter()
                 .filter_entry(|entry| !is_path_excluded(entry.path(), &exclude_set, &cwd));
 
-            for entry_result in walker {
-                let entry = entry_result?;
+            for entry in walker {
+                let entry = entry?;
                 if entry.file_type().is_file() {
                     let p = entry.path();
                     if !should_exclude_by_type(p, &exclude_exts) {
@@ -96,19 +85,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             }
-        } else {
-            eprintln!(
-                "Warning: Path does not exist or is not a file/directory: {}",
-                include_path.display()
-            );
         }
     }
 
-    // Sort for deterministic output
     files_to_process.sort_by(|a, b| {
-        a.to_string_lossy()
-            .to_lowercase()
-            .cmp(&b.to_string_lossy().to_lowercase())
+        a.to_string_lossy().to_lowercase().cmp(&b.to_string_lossy().to_lowercase())
     });
     files_to_process.dedup();
 
@@ -117,8 +98,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    // Pre-allocate a large buffer to handle very big projects (>100k lines)
-    // 128 MiB is usually more than enough even for huge codebases.
+    // Large capacity for big projects
     let mut output = String::with_capacity(128 * 1024 * 1024);
 
     for file_path in &files_to_process {
@@ -140,24 +120,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         output.push('\n');
     }
 
-    // Copy to clipboard using wl-copy (Wayland) or xclip/xsel (X11)
     copy_to_clipboard(&output)?;
 
     let file_count = files_to_process.len();
     let char_count = output.len();
+
     println!(
-        "✅ Copied {} file(s) to clipboard ({} characters, ~{:.1} MiB)",
+        "Copied {} file(s) to clipboard ({} characters, ~{:.1} MiB)",
         file_count,
         char_count,
         char_count as f64 / (1024.0 * 1024.0)
     );
-    println!("   Content is formatted as: <path>:\n<file content>\n");
-    println!("   Ready to paste with Ctrl/Cmd+V.");
 
     Ok(())
 }
 
-/// Returns true if the file extension should be excluded
 fn should_exclude_by_type(p: &Path, exclude_exts: &HashSet<String>) -> bool {
     if exclude_exts.is_empty() {
         return false;
@@ -170,47 +147,42 @@ fn should_exclude_by_type(p: &Path, exclude_exts: &HashSet<String>) -> bool {
     }
 }
 
-/// Returns true if the path (or its canonical form) is in the exclude set
 fn is_path_excluded(p: &Path, exclude_set: &HashSet<PathBuf>, cwd: &Path) -> bool {
-    let abs = if p.is_absolute() {
-        p.to_path_buf()
-    } else {
-        cwd.join(p)
-    };
-
+    let abs = if p.is_absolute() { p.to_path_buf() } else { cwd.join(p) };
     if exclude_set.contains(&abs) {
         return true;
     }
-
     if let Ok(canon) = fs::canonicalize(&abs) {
-        if exclude_set.contains(&canon) {
-            return true;
-        }
+        return exclude_set.contains(&canon);
     }
     false
 }
 
-/// Copies text to the system clipboard.
-/// Prefers wl-copy on Wayland (wlroots), falls back to xclip/xsel on X11.
+/// Copies text to clipboard.
+/// Prefers wl-copy (stdin) on Wayland. Falls back to xclip/xsel on X11.
 fn copy_to_clipboard(text: &str) -> Result<(), Box<dyn std::error::Error>> {
-    // Wayland first (wl-copy)
-    if env::var("WAYLAND_DISPLAY").is_ok() {
-        if let Ok(status) = Command::new("wl-copy")
-            .arg(text)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-        {
-            if status.success() {
-                return Ok(());
+    // Try wl-copy first using stdin (robust for large content)
+    if let Ok(mut child) = Command::new("wl-copy")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        if let Some(mut stdin) = child.stdin.take() {
+            if stdin.write_all(text.as_bytes()).is_ok() {
+                drop(stdin);
+                if let Ok(status) = child.wait() {
+                    if status.success() {
+                        return Ok(());
+                    }
+                }
             }
         }
     }
 
-    // X11
+    // X11 fallback
     if env::var("DISPLAY").is_ok() {
-        // Try xclip
+        // xclip
         if let Ok(mut child) = Command::new("xclip")
             .args(["-selection", "clipboard"])
             .stdin(Stdio::piped())
@@ -219,12 +191,12 @@ fn copy_to_clipboard(text: &str) -> Result<(), Box<dyn std::error::Error>> {
             if let Some(mut stdin) = child.stdin.take() {
                 let _ = stdin.write_all(text.as_bytes());
             }
-            if child.wait().is_ok() {
+            if child.wait().map(|s| s.success()).unwrap_or(false) {
                 return Ok(());
             }
         }
 
-        // Try xsel as fallback
+        // xsel
         if let Ok(mut child) = Command::new("xsel")
             .args(["--clipboard", "--input"])
             .stdin(Stdio::piped())
@@ -233,24 +205,11 @@ fn copy_to_clipboard(text: &str) -> Result<(), Box<dyn std::error::Error>> {
             if let Some(mut stdin) = child.stdin.take() {
                 let _ = stdin.write_all(text.as_bytes());
             }
-            if child.wait().is_ok() {
+            if child.wait().map(|s| s.success()).unwrap_or(false) {
                 return Ok(());
             }
         }
     }
 
-    // Last attempt: try wl-copy anyway
-    if let Ok(status) = Command::new("wl-copy")
-        .arg(text)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-    {
-        if status.success() {
-            return Ok(());
-        }
-    }
-
-    Err("Failed to copy to clipboard. Please install 'wl-copy' (Wayland) or 'xclip'/'xsel' (X11).".into())
+    Err("Failed to copy to clipboard. Install 'wl-copy' (Wayland) or 'xclip'/'xsel' (X11).".into())
 }
