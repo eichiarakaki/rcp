@@ -1,6 +1,6 @@
-# rcopy
+# rcp
 
-**rcopy** is a simple and fast command-line tool that recursively collects the contents of files and directories, merges them into a single block, and copies everything to your clipboard with clean path headers.
+**rcp** is a simple and fast command-line tool that recursively collects the contents of files and directories, merges them into a single block, and copies everything to your clipboard with clean path headers.
 
 It is especially useful when you want to quickly share code context with LLMs (ChatGPT, Claude, Grok, etc.), create code reviews, or paste multiple files together.
 

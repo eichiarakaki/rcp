@@ -7,7 +7,7 @@
 
 PREFIX ?= /usr/local
 BIN_DIR := $(PREFIX)/bin
-BINARY := target/release/rcopy
+BINARY := target/release/rcp
 
 .PHONY: all build install uninstall help
 
@@ -17,19 +17,19 @@ build:
 	cargo build --release
 
 install: build
-	@echo "Installing rcopy to $(BIN_DIR)..."
+	@echo "Installing rcp to $(BIN_DIR)..."
 	@mkdir -p $(BIN_DIR)
-	@install -m 755 $(BINARY) $(BIN_DIR)/rcopy
-	@echo "rcopy installed successfully to $(BIN_DIR)/rcopy"
-	@echo "   You can now run: rcopy --help"
+	@install -m 755 $(BINARY) $(BIN_DIR)/rcp
+	@echo "rcp installed successfully to $(BIN_DIR)/rcp"
+	@echo "   You can now run: rcp --help"
 
 uninstall:
 	@echo "Removing rcopy from $(BIN_DIR)..."
-	@rm -f $(BIN_DIR)/rcopy
-	@echo "rcopy has been uninstalled from $(BIN_DIR)"
+	@rm -f $(BIN_DIR)/rcp
+	@echo "rcp has been uninstalled from $(BIN_DIR)"
 
 help:
-	@echo "rcopy Makefile"
+	@echo "rcp Makefile"
 	@echo ""
 	@echo "Targets:"
 	@echo "  make build           Build release binary"
