@@ -8,7 +8,7 @@ use clap::Parser;
 use walkdir::WalkDir;
 
 #[derive(Parser, Debug)]
-#[command(name = "rcopy", version, about = "Copy files and directories recursively to clipboard (merged with path headers)")]
+#[command(name = "rcp", version, about = "Copy files and directories recursively to clipboard (merged with path headers)")]
 struct Args {
     #[arg(long, default_value_t = false)]
     copy: bool,

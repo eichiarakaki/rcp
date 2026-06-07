@@ -135,7 +135,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rcopy"
+name = "rcp"
 version = "0.1.0"
 dependencies = [
  "clap",
