@@ -1,5 +1,5 @@
 {
-  description = "rcopy - copy files recursively to clipboard (merged)";
+  description = "rcp - copy files recursively to clipboard (merged)";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -13,15 +13,19 @@
       in
       {
         packages.default = pkgs.rustPlatform.buildRustPackage {
-          pname = "rcopy";
+          pname = "rcp";
           version = "0.1.0";
+
           src = ./.;
+
           cargoLock.lockFile = ./Cargo.lock;
+
           nativeBuildInputs = with pkgs; [ pkg-config ];
+
           meta = {
             description = "Recursively copy files to clipboard with path headers";
             license = pkgs.lib.licenses.mit;
-            mainProgram = "rcopy";
+            mainProgram = "rcp";
           };
         };
 
@@ -30,7 +34,12 @@
         };
 
         devShells.default = pkgs.mkShell {
-          packages = with pkgs; [ rustc cargo rust-analyzer clippy ];
+          packages = with pkgs; [
+            rustc
+            cargo
+            rust-analyzer
+            clippy
+          ];
         };
 
         formatter = pkgs.nixpkgs-fmt;
