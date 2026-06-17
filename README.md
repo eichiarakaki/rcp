@@ -1,106 +1,249 @@
 # rcp
 
-**rcp** is a simple and fast command-line tool that recursively collects the contents of files and directories, merges them into a single block, and copies everything to your clipboard with clean path headers.
+**rcp** is a small and fast command-line tool that recursively collects files and directories, merges their contents into a single block, and copies the result to your clipboard with clean path headers.
 
-It is especially useful when you want to quickly share code context with LLMs (ChatGPT, Claude, Grok, etc.), create code reviews, or paste multiple files together.
+It is built for quickly sharing project context with LLMs such as ChatGPT, Claude, Grok, or any other coding assistant. It is also useful for code reviews, debugging sessions, and pasting multiple source files together without manually opening each one.
 
 ## Features
 
-- Recursively walks directories
-- Supports excluding file types (`.go`, `.rs`, `.h`, etc.)
-- Supports excluding specific files or directories
-- Outputs clean formatted content with file paths as headers
-- Works on **Wayland** (`wl-copy`) and **X11** (`xclip` / `xsel`)
-- Handles very large projects (>100,000 lines)
-- Cross-platform (Linux, macOS, Windows)
-- Simple installation with `make` or Nix flakes
+* Recursively walks files and directories
+* Merges file contents into a single clipboard payload
+* Adds clean path headers before each file
+* Supports explicit ignore rules with `--ignore` / `-i`
+* Includes sensible default ignores for build outputs, caches, dependencies, lock files, binaries, media, and generated artifacts
+* Supports disabling default ignores with `--no-default-ignores`
+* Supports excluding additional file extensions with `--exclude-file-types`
+* Does not follow symbolic links
+* Works on Wayland via `wl-copy`
+* Falls back to X11 via `xclip` or `xsel`
+* Handles large projects with a large preallocated buffer
 
 ## Installation
 
-### 1. Using Nix (Recommended on NixOS)
+### Using Nix
 
 ```bash
 nix profile install .
+```
+
+Run directly:
+
+```bash
 nix run . -- --help
 ```
 
-Or enter a development shell:
+Development shell:
 
 ```bash
 nix develop
 ```
 
-### 2. Using Makefile
+### Using Makefile
+
+System-wide install:
 
 ```bash
-# System-wide (requires sudo)
 sudo make install
+```
 
-# User-local install (recommended)
+User-local install:
+
+```bash
 make install PREFIX=$HOME/.local
 ```
 
-### 3. From Source
+### From Source
 
 ```bash
 cargo build --release
-sudo cp target/release/rcopy /usr/local/bin/
+sudo cp target/release/rcp /usr/local/bin/
 ```
 
 ## Uninstall
 
 ```bash
 sudo make uninstall
-# or
+```
+
+Or for user-local installs:
+
+```bash
 make uninstall PREFIX=$HOME/.local
 ```
 
 ## Usage
 
 ```bash
-rcopy [OPTIONS] <PATHS>...
+rcp [OPTIONS] <PATHS>...
 ```
 
-### Examples
+## Examples
+
+Copy a source directory and a few project files:
 
 ```bash
-rcopy ./src ./README.md Cargo.toml
+rcp ./src ./README.md Cargo.toml
+```
 
-rcopy --copy ./dir1 ./dir2 example.go example.txt \
-  --exclude-file-types .go .h \
-  --exclude ./dir3 ./file.c
+Copy the current project while ignoring extra paths:
+
+```bash
+rcp . -i secrets.toml -i notes/private.md
+```
+
+Ignore directories:
+
+```bash
+rcp . -i target -i node_modules -i .git
+```
+
+Ignore glob-style patterns:
+
+```bash
+rcp . -i "*.env" -i "*.lock" -i "dist/*.js"
+```
+
+Exclude file types manually:
+
+```bash
+rcp . --exclude-file-types .png .jpg .pdf
+```
+
+Disable all built-in default ignores:
+
+```bash
+rcp . --no-default-ignores
 ```
 
 ## Command Line Options
 
-| Option                    | Description                                      |
-|---------------------------|--------------------------------------------------|
-| `--copy`                  | Optional flag                                    |
-| `<paths>...`              | Files and/or directories                         |
-| `--exclude-file-types`    | File extensions to exclude                       |
-| `--exclude`               | Specific paths to exclude                        |
+| Option                          | Description                                                |
+| ------------------------------- | ---------------------------------------------------------- |
+| `<PATHS>...`                    | Files and/or directories to collect                        |
+| `--ignore <PATTERN>`            | Ignore a file, directory, path, or simple glob pattern     |
+| `-i <PATTERN>`                  | Short form of `--ignore`                                   |
+| `--exclude-file-types <EXT>...` | Exclude files by extension                                 |
+| `--no-default-ignores`          | Disable built-in default ignore rules                      |
+| `--copy`                        | Compatibility flag; clipboard copy is the default behavior |
+
+## Ignore Rules
+
+`rcp` supports repeated ignore rules:
+
+```bash
+rcp . -i target -i .git -i "*.lock"
+```
+
+Supported ignore forms:
+
+| Pattern         | Meaning                                        |
+| --------------- | ---------------------------------------------- |
+| `.git`          | Ignore any path component named `.git`         |
+| `target`        | Ignore any file or directory named `target`    |
+| `*.lock`        | Ignore files ending in `.lock`                 |
+| `result-*`      | Ignore names matching the wildcard             |
+| `dist/*.js`     | Ignore relative paths matching the wildcard    |
+| `src/generated` | Ignore a specific path and everything under it |
+
+## Default Ignores
+
+By default, `rcp` skips common files and directories that are usually useless when sending code context to an LLM.
+
+Default ignored examples include:
+
+```text
+.git
+target
+node_modules
+dist
+build
+result
+result-*
+.direnv
+.devenv
+.venv
+venv
+__pycache__
+*.lock
+*.log
+*.tmp
+*.png
+*.jpg
+*.pdf
+*.zip
+*.tar.gz
+*.mp4
+*.mp3
+*.exe
+*.so
+*.dll
+*.sqlite
+*.parquet
+*.ttf
+*.woff2
+```
+
+To include everything, disable default ignores:
+
+```bash
+rcp . --no-default-ignores
+```
 
 ## Output Format
 
+```text
+src/main.rs:
+fn main() {
+    println!("hello");
+}
+
+Cargo.toml:
+[package]
+name = "rcp"
+version = "0.1.0"
+
+README.md:
+# rcp
+...
 ```
-dir1/asd.c:
-#include <stdio.h>
-...
 
-dir1/b.rs:
-fn main() { ... }
+## Clipboard Backends
 
-example.go:
-package main
-...
+`rcp` tries clipboard tools in this order:
 
-example.txt:
-Hello world
+1. `wl-copy` for Wayland
+2. `xclip` for X11
+3. `xsel` for X11
+
+Install the appropriate clipboard backend for your environment.
+
+### Wayland
+
+```bash
+sudo pacman -S wl-clipboard
+```
+
+```bash
+nix profile install nixpkgs#wl-clipboard
+```
+
+### X11
+
+```bash
+sudo pacman -S xclip
+```
+
+or:
+
+```bash
+sudo pacman -S xsel
 ```
 
 ## Notes
 
-- Hidden files are included by default.
-- Symbolic links are not followed.
-- Supports very large projects (128 MiB buffer).
-- Requires `wl-copy` (Wayland) or `xclip`/`xsel` (X11).
+* Hidden files are included unless ignored by default or via `-i`.
+* Symbolic links are not followed.
+* Binary and media files are ignored by default.
+* Lock files are ignored by default.
+* The clipboard payload is preallocated for large projects.
+* This tool is primarily designed for Linux clipboard workflows.
